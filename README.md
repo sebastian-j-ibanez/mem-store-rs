@@ -1,6 +1,6 @@
 # mem-store-rs
 
-mem-store-rs is an in-memory data store.
+A simple in-memory data store.
 
 ## Disclaimer 
 
