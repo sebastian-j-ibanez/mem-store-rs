@@ -21,3 +21,9 @@ impl fmt::Display for Error {
         write!(f, "{message}")
     }
 }
+
+impl Error {
+    pub fn log(&self) {
+        println!("error: {}", self.to_string())
+    }
+}

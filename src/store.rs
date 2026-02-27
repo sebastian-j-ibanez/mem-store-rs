@@ -45,11 +45,12 @@ impl Store {
 
     /// Delete key-value pair.
     pub fn delete(&mut self, key: String) -> Result<(), Error> {
-        if let None = self.map.remove(&key) {
-            return Err(Error::KeyNotFoundError);
+        if let Some(value) = self.map.remove(&key) {
+            println!("[DEL] key: {}\n      value: {}", key, value.clone());
+            return Ok(());
         }
 
-        Ok(())
+        Err(Error::KeyNotFoundError)
     }
 }
 
