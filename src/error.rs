@@ -7,6 +7,7 @@ pub enum Error {
     StoreUpdateError,
     StoreDeleteError,
     KeyNotFoundError,
+    PacketBuildError,
 }
 
 impl fmt::Display for Error {
@@ -16,6 +17,7 @@ impl fmt::Display for Error {
             Error::StoreUpdateError => "unable to update key-value pair",
             Error::StoreDeleteError => "unable to delete key-value pair ",
             Error::KeyNotFoundError => "key not found",
+            Error::PacketBuildError => "could not build packet",
         };
 
         write!(f, "{message}")

@@ -5,6 +5,8 @@ use std::{
     fmt,
 };
 
+use serde::Deserialize;
+
 use crate::error::Error;
 
 /// Stores key-value pairs.
@@ -54,7 +56,7 @@ impl Store {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub enum Item {
     String(String),
     List(Vec<String>),
