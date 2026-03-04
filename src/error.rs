@@ -3,10 +3,17 @@
 use std::fmt;
 
 pub enum Error {
+    // Store
     StoreInsertError,
     StoreUpdateError,
     StoreDeleteError,
     KeyNotFoundError,
+    // Networking
+    InvalidAddr,
+    UnableToBind,
+    UnableToAccept,
+    InvalidStream,
+    // Protocol
     PacketBuildError,
 }
 
@@ -17,6 +24,9 @@ impl fmt::Display for Error {
             Error::StoreUpdateError => "unable to update key-value pair",
             Error::StoreDeleteError => "unable to delete key-value pair ",
             Error::KeyNotFoundError => "key not found",
+            Error::InvalidAddr => "invalid IP address",
+            Error::UnableToBind => "unable to bind to address",
+            Error::UnableToAccept => "unable to accept incoming connection",
             Error::PacketBuildError => "could not build packet",
         };
 
