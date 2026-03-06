@@ -3,70 +3,40 @@
 //! Custom communication protocol for mem-store-rs.
 //! Written on top of TCP.
 
-use serde::{self, Deserialize};
+use derive_builder::Builder;
+use serde::{self, Deserialize, Serialize};
 
-use crate::{error::Error, store::Item};
+use crate::store::Item;
+
+pub const PKT_SIZE: usize = size_of::<Packet>();
+
+/// mem-store-rs protocol packet structure.
+#[derive(Serialize, Deserialize, Default, Builder, Clone)]
+pub struct Packet {
+    pub key: Option<String>,
+    pub value: Option<Item>,
+    pub packet_type: PacketType,
+}
+
+impl Packet {}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum PacketType {
+    Request(Method),
+    Response,
+}
+
+impl Default for PacketType {
+    fn default() -> Self {
+        PacketType::Response
+    }
+}
 
 /// Request methods that can be made in the protocol.
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum Method {
     Get,
     Add,
     Update,
     Delete,
-}
-
-/// mem-store-rs protocol packet structure.
-#[derive(Deserialize)]
-pub struct Packet {
-    key: String,
-    value: Option<Item>,
-    method: Method,
-}
-
-impl Packet {}
-
-pub struct PacketBuilder {
-    key: Option<String>,
-    value: Option<Option<Item>>,
-    method: Option<Method>,
-}
-
-impl PacketBuilder {
-    pub fn new() -> Self {
-        PacketBuilder {
-            key: None,
-            value: None,
-            method: None,
-        }
-    }
-
-    pub fn key(self, k: String) -> Self {
-        Self {
-            key: Some(k),
-            ..self
-        }
-    }
-
-    pub fn value(self, v: Item) -> Self {
-        Self {
-            value: Some(Some(v)),
-            ..self
-        }
-    }
-
-    pub fn method(self, m: Method) -> Self {
-        Self {
-            method: Some(m),
-            ..self
-        }
-    }
-
-    pub fn build(self) -> Result<Packet, Error> {
-        Ok(Packet {
-            key: self.key.ok_or(Error::PacketBuildError)?,
-            value: self.value.ok_or(Error::PacketBuildError)?,
-            method: self.method.ok_or(Error::PacketBuildError)?,
-        })
-    }
 }

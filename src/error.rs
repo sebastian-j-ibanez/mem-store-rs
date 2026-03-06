@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+#[derive(Debug)]
 pub enum Error {
     // Store
     StoreInsertError,
@@ -14,7 +15,12 @@ pub enum Error {
     UnableToAccept,
     InvalidStream,
     // Protocol
+    InvalidPacketFields,
     PacketBuildError,
+    UnableToSerialize,
+    UnableToDeserialize,
+    UnableToSend,
+    UnableToReceive,
 }
 
 impl fmt::Display for Error {
@@ -28,6 +34,12 @@ impl fmt::Display for Error {
             Error::UnableToBind => "unable to bind to address",
             Error::UnableToAccept => "unable to accept incoming connection",
             Error::PacketBuildError => "could not build packet",
+            Error::InvalidStream => "invalid stream",
+            Error::UnableToSerialize => "unable to serialize packet",
+            Error::UnableToDeserialize => "unable to deserialize packet",
+            Error::InvalidPacketFields => "invalid packat fields",
+            Error::UnableToSend => "unable to send packet through stream",
+            Error::UnableToReceive => "unable to receive packet from stream",
         };
 
         write!(f, "{message}")

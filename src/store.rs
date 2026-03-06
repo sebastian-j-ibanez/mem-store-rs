@@ -5,7 +5,7 @@ use std::{
     fmt,
 };
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
 
@@ -56,7 +56,7 @@ impl Store {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Item {
     String(String),
     List(Vec<String>),
