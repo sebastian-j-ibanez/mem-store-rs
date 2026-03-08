@@ -13,7 +13,6 @@ use crate::error::Error;
 #[derive(Debug, Clone)]
 pub struct Store {
     map: HashMap<String, Item>,
-    count: u32,
 }
 
 impl Store {
@@ -21,7 +20,6 @@ impl Store {
     pub fn new() -> Store {
         Store {
             map: HashMap::new(),
-            count: 0,
         }
     }
 
@@ -29,7 +27,7 @@ impl Store {
     /// Returns `Error::StoreInsertError` if pair cannot be inserted.
     pub fn add(&mut self, key: String, value: Item) -> Result<(), Error> {
         if self.map.get(&key).is_none() {
-            println!("[ADD] key: {}\n      value: {}", key.clone(), value.clone());
+            println!("[ADD] key: {}\n      value: {}", key, value.to_string().replace('\n', "\n             "));
             self.map.insert(key.clone(), value.clone());
         }
 
@@ -39,7 +37,7 @@ impl Store {
     /// Update value in existing pair.
     pub fn get(&self, key: String) -> Option<&Item> {
         if let Some(value) = self.map.get(&key) {
-            println!("[GET] key: {}\n      value: {}", key, value.clone());
+            println!("[GET] key: {}\n      value: {}", key, value.to_string().replace('\n', "\n             "));
             return Some(&value);
         }
         None
@@ -48,7 +46,7 @@ impl Store {
     /// Delete key-value pair.
     pub fn delete(&mut self, key: String) -> Result<(), Error> {
         if let Some(value) = self.map.remove(&key) {
-            println!("[DEL] key: {}\n      value: {}", key, value.clone());
+            println!("[DEL] key: {}\n      value: {}", key, value.to_string().replace('\n', "\n             "));
             return Ok(());
         }
 

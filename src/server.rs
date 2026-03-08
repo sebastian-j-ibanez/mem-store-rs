@@ -1,27 +1,24 @@
 // Copyright (c) 2026 Sebastian Ibanez
 
-use postcard::{from_bytes, to_allocvec};
-use std::net::IpAddr;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
-};
+use std::net::SocketAddr;
+use tokio::net::{TcpListener, TcpStream};
 
 use crate::{
     error::Error,
-    protocol::{Method, Packet, PacketType},
+    protocol::{Packet, PacketType, recv_packet, send_packet},
     store::Store,
 };
 
+#[derive(Debug)]
 pub struct Server {
-    addr: IpAddr,
+    addr: SocketAddr,
     stream: Option<TcpStream>,
     store: Store,
 }
 
 impl Server {
     pub async fn init(raw_addr: &'static str) -> Result<Self, Error> {
-        if let Ok(addr) = raw_addr.parse::<IpAddr>() {
+        if let Ok(addr) = raw_addr.parse::<SocketAddr>() {
             return Ok(Self {
                 addr: addr,
                 stream: None,
@@ -32,7 +29,7 @@ impl Server {
     }
 
     pub async fn listen(&mut self) -> Result<(), Error> {
-        let listener = TcpListener::bind(self.addr.to_string())
+        let listener = TcpListener::bind(self.addr)
             .await
             .map_err(|_| Error::UnableToBind)?;
 
@@ -40,54 +37,30 @@ impl Server {
             match listener.accept().await {
                 Ok((stream, _)) => {
                     self.stream = Some(stream);
-                    self.handle_req().await?;
+                    loop {
+                        match self.handle_req().await {
+                            Ok(_) => continue,
+                            Err(_) => break,
+                        }
+                    }
                 }
                 Err(_) => return Err(Error::UnableToAccept),
             };
         }
     }
 
-    async fn send_packet(&mut self, packet: &Packet) -> Result<(), Error> {
-        let stream = self.stream.as_mut().ok_or(Error::InvalidStream)?;
-        let payload = to_allocvec(packet).map_err(|_| Error::UnableToSerialize)?;
-        let len = (payload.len() as u32).to_be_bytes();
-        stream
-            .write_all(&len)
-            .await
-            .map_err(|_| Error::UnableToSend)?;
-        stream
-            .write_all(&payload)
-            .await
-            .map_err(|_| Error::UnableToSend)?;
-        Ok(())
-    }
-
-    async fn recv_packet(&mut self) -> Result<Packet, Error> {
-        let stream = self.stream.as_mut().ok_or(Error::InvalidStream)?;
-        let mut len_buf = [0u8; 4];
-        stream
-            .read_exact(&mut len_buf)
-            .await
-            .map_err(|_| Error::UnableToReceive)?;
-        let len = u32::from_be_bytes(len_buf) as usize;
-
-        let mut buf = vec![0u8; len];
-        stream
-            .read_exact(&mut buf)
-            .await
-            .map_err(|_| Error::UnableToReceive)?;
-        from_bytes(&buf).map_err(|_| Error::UnableToDeserialize)
+    pub fn stream(&mut self) -> Result<&mut TcpStream, Error> {
+        self.stream.as_mut().ok_or(Error::InvalidStream)
     }
 
     pub async fn handle_req(&mut self) -> Result<(), Error> {
-        let request = self.recv_packet().await?;
+        let request = recv_packet(self.stream()?).await?;
 
         match request.packet_type {
-            PacketType::Request(Method::Get) => self.handle_get(request).await?,
-            PacketType::Request(Method::Add) => todo!(),
-            PacketType::Request(Method::Update) => todo!(),
-            PacketType::Request(Method::Delete) => todo!(),
-            PacketType::Response => todo!(),
+            PacketType::RequestGet => self.handle_get(request).await?,
+            PacketType::RequestSet => self.handle_set(request).await?,
+            PacketType::RequestDelete => todo!(),
+            _ => todo!(),
         }
 
         Ok(())
@@ -97,12 +70,8 @@ impl Server {
         let key = match request.key {
             Some(key) => key,
             None => {
-                let response = Packet {
-                    key: None,
-                    value: None,
-                    packet_type: PacketType::Response,
-                };
-                self.send_packet(&response).await?;
+                let response = Packet::error_response(Error::InvalidPacketFields);
+                send_packet(self.stream()?, &response).await?;
                 return Err(Error::InvalidPacketFields);
             }
         };
@@ -111,14 +80,27 @@ impl Server {
             Some(value) => Packet {
                 key: None,
                 value: Some(value.clone()),
-                packet_type: PacketType::Response,
+                packet_type: PacketType::ResponseOk,
             },
-            None => Packet {
-                key: None,
-                value: None,
-                packet_type: PacketType::Response,
-            },
+            None => Packet::ok_response(),
         };
-        self.send_packet(&response).await
+        send_packet(self.stream()?, &response).await
+    }
+
+    pub async fn handle_set(&mut self, request: Packet) -> Result<(), Error> {
+        let (key, value) = match (request.key, request.value) {
+            (Some(key), Some(value)) => (key, value),
+            _ => {
+                let response = Packet::error_response(Error::InvalidPacketFields);
+                send_packet(self.stream()?, &response).await?;
+                return Err(Error::InvalidPacketFields);
+            }
+        };
+
+        let response = match self.store.add(key, value) {
+            Ok(_) => Packet::ok_response(),
+            Err(_) => Packet::error_response(Error::StoreSetError),
+        };
+        send_packet(self.stream()?, &response).await
     }
 }

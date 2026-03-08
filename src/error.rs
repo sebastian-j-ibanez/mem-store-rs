@@ -2,11 +2,12 @@
 
 use std::fmt;
 
-#[derive(Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Error {
     // Store
-    StoreInsertError,
-    StoreUpdateError,
+    StoreSetError,
     StoreDeleteError,
     KeyNotFoundError,
     // Networking
@@ -14,32 +15,37 @@ pub enum Error {
     UnableToBind,
     UnableToAccept,
     InvalidStream,
-    // Protocol
+    ConnectionTimedOut,
+    UnableToSend,
+    UnableToReceive,
+    // Packet
     InvalidPacketFields,
     PacketBuildError,
     UnableToSerialize,
     UnableToDeserialize,
-    UnableToSend,
-    UnableToReceive,
+    MissingPacketFields,
+    UnexpectedPacketType,
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
-            Error::StoreInsertError => "unable to insert key-value pair into store",
-            Error::StoreUpdateError => "unable to update key-value pair",
+            Error::StoreSetError => "unable to set key-value pair",
             Error::StoreDeleteError => "unable to delete key-value pair ",
             Error::KeyNotFoundError => "key not found",
             Error::InvalidAddr => "invalid IP address",
             Error::UnableToBind => "unable to bind to address",
             Error::UnableToAccept => "unable to accept incoming connection",
+            Error::ConnectionTimedOut => "connection timed out",
+            Error::UnableToSend => "unable to send packet through stream",
+            Error::UnableToReceive => "unable to receive packet from stream",
             Error::PacketBuildError => "could not build packet",
             Error::InvalidStream => "invalid stream",
             Error::UnableToSerialize => "unable to serialize packet",
             Error::UnableToDeserialize => "unable to deserialize packet",
             Error::InvalidPacketFields => "invalid packat fields",
-            Error::UnableToSend => "unable to send packet through stream",
-            Error::UnableToReceive => "unable to receive packet from stream",
+            Error::MissingPacketFields => "one or more packet fields are missing data",
+            Error::UnexpectedPacketType => "unexpected packet type",
         };
 
         write!(f, "{message}")
