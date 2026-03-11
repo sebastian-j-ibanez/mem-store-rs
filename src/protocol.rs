@@ -4,15 +4,18 @@
 //! Written on top of TCP.
 
 use postcard::{from_bytes, to_allocvec};
-use serde::{self, Deserialize, Serialize};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::TcpStream};
 
 use crate::{error::Error, store::Item};
 
 pub const PKT_SIZE: usize = size_of::<Packet>();
 
+pub trait Serialize {
+    fn serialize(&self) -> String;
+}
+
 /// mem-store-rs protocol packet structure.
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Default, Clone)]
 pub struct Packet {
     pub key: Option<String>,
     pub value: Option<Item>,
@@ -59,9 +62,60 @@ impl Packet {
             packet_type: PacketType::RequestSet,
         }
     }
+
+    fn serialize(&self) -> String {
+        match self.packet_type {
+            PacketType::RequestGet => self.serialize_key('+'),
+            PacketType::RequestSet => self.serialize_key_and_value('>'),
+            PacketType::RequestDelete => self.serialize_key('-'),
+            PacketType::ResponseOk => self.serialize_key_and_value('$'),
+            PacketType::ResponseError(error) => format!("&{}", error.to_string()),
+        }
+    }
+
+    fn serialize_key(&self, symbol: char) -> String {
+        let mut buf = String::from(symbol);
+        if let Some(key) = self.key.clone() {
+            buf = format!("{}{}", buf, key);
+        }
+        buf
+    }
+
+    fn serialize_key_and_value(&self, symbol: char) -> String {
+        let mut buf = String::from(symbol);
+        if let Some(key) = self.key.clone() {
+            buf = format!("{}{}", buf, key);
+        }
+        if let Some(value) = self.value.clone() {
+            buf = format!("{}{}", buf, value);
+        }
+        buf
+    }
+
+    pub fn deserialize(bytes: &[u8]) -> Packet {
+        let serial_data = String::from_utf8_lossy(bytes);
+        let packet_str = serial_data.as_ref().to_string();
+        let pkt_type = match packet_str.get(0..1) {
+            Some("+") => PacketType::RequestGet,
+            Some(">") => PacketType::RequestSet,
+            Some("-") => PacketType::RequestDelete,
+            Some("$") => PacketType::ResponseOk,
+            Some("&") => todo!(),
+            _ => todo!(),
+        };
+        // TODO: somehow split packet_str at the key and value
+        // maybe have a delimiter for:
+        // - Some key
+        // - No key
+        // - Some value
+        // - No value
+        //
+        // ^ Feels wrong. No way of knowing if value delimiter is part of key or not.
+        // HOW DO PEOPLE SERIALIZE/DESERIALIZE PACKETS!?
+    }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub enum PacketType {
     RequestGet,
     RequestSet,
@@ -78,7 +132,9 @@ impl Default for PacketType {
 
 /// Send a Packet across a `&mut TcpStream`.
 pub async fn send_packet(stream: &mut TcpStream, packet: &Packet) -> Result<(), Error> {
-    let payload = to_allocvec(packet).map_err(|_| Error::UnableToSerialize)?;
+    let serial_pkt = packet.serialize();
+    let payload = serial_pkt.as_bytes();
+    // let payload = to_allocvec(packet).map_err(|_| Error::UnableToSerialize)?;
     let len = (payload.len() as u32).to_be_bytes();
     stream
         .write_all(&len)
