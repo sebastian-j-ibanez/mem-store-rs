@@ -63,31 +63,31 @@ impl Packet {
         }
     }
 
-    fn serialize(&self) -> String {
-        match self.packet_type {
-            PacketType::RequestGet => self.serialize_key('+'),
-            PacketType::RequestSet => self.serialize_key_and_value('>'),
-            PacketType::RequestDelete => self.serialize_key('-'),
-            PacketType::ResponseOk => self.serialize_key_and_value('$'),
-            PacketType::ResponseError(error) => format!("&{}", error.to_string()),
-        }
-    }
+    // fn serialize(&self) -> Vec<u8> {
+    //     match self.packet_type {
+    //         PacketType::RequestGet => self.serialize_key('+'),
+    //         PacketType::RequestSet => self.serialize_key_and_value('>'),
+    //         PacketType::RequestDelete => self.serialize_key('-'),
+    //         PacketType::ResponseOk => self.serialize_key_and_value('$'),
+    //         PacketType::ResponseError(error) => format!("&{}", error.to_string()),
+    //     }
+    // }
 
-    fn serialize_key(&self, symbol: char) -> String {
-        let mut buf = String::from(symbol);
+    fn serialize(&self, symbol: char) -> Vec<u8> {
+        let mut buf = vec![symbol as u8];
         if let Some(key) = self.key.clone() {
-            buf = format!("{}{}", buf, key);
-        }
-        buf
-    }
-
-    fn serialize_key_and_value(&self, symbol: char) -> String {
-        let mut buf = String::from(symbol);
-        if let Some(key) = self.key.clone() {
-            buf = format!("{}{}", buf, key);
+            let key_bytes = key.as_bytes();
+            buf.extend(&(key_bytes.len() as u16).to_be_bytes());
+            buf.extend(key_bytes)
+        } else {
+            buf.extend(&0u16.to_be_bytes());
         }
         if let Some(value) = self.value.clone() {
-            buf = format!("{}{}", buf, value);
+            let key_bytes = Item::as_bytes(&value);
+            buf.extend(&(key_bytes.len() as u16).to_be_bytes());
+            buf.extend(key_bytes)
+        } else {
+            buf.extend(&0u16.to_be_bytes());
         }
         buf
     }
@@ -122,6 +122,18 @@ pub enum PacketType {
     RequestDelete,
     ResponseOk,
     ResponseError(Error),
+}
+
+impl PacketType {
+    pub fn to_tag(&self) -> u8 {
+        match self {
+            PacketType::RequestGet => '+' as u8,
+            PacketType::RequestSet => '>' as u8,
+            PacketType::RequestDelete => '-' as u8,
+            PacketType::ResponseOk => '$' as u8,
+            PacketType::ResponseError(_) => '&' as u8,
+        }
+    }
 }
 
 impl Default for PacketType {

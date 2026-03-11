@@ -57,7 +57,7 @@ impl Client {
         }
     }
 
-    pub async fn delet_value(&mut self, key: String) -> Result<(), Error> {
+    pub async fn delete_value(&mut self, key: String) -> Result<(), Error> {
         let stream = self.stream()?;
         let request = Packet::delete_request(key);
         send_packet(stream, &request).await?;
