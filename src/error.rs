@@ -2,9 +2,7 @@
 
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize, Deserialize, Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum Error {
     // Store
     StoreSetError,
@@ -25,6 +23,7 @@ pub enum Error {
     UnableToDeserialize,
     MissingPacketFields,
     UnexpectedPacketType,
+    ValueLengthTooLong,
 }
 
 impl fmt::Display for Error {
@@ -46,6 +45,7 @@ impl fmt::Display for Error {
             Error::InvalidPacketFields => "invalid packat fields",
             Error::MissingPacketFields => "one or more packet fields are missing data",
             Error::UnexpectedPacketType => "unexpected packet type",
+            Error::ValueLengthTooLong => "value exceeds max length of 4.2GB",
         };
 
         write!(f, "{message}")

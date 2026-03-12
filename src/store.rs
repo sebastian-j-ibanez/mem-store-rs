@@ -5,8 +5,6 @@ use std::{
     fmt,
 };
 
-use serde::{Deserialize, Serialize};
-
 use crate::error::Error;
 
 /// Stores key-value pairs.
@@ -66,24 +64,31 @@ impl Store {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum Item {
     String(String),
     List(Vec<String>),
     Set(HashSet<String>),
     HashMap(HashMap<String, String>),
 }
+/*
+    Item string representation:
+    String  => abc
+    List    => a,b,c
+    Set     => [a,b,c]
+    HashMap => akey:a,bkey:b,ckey:c
+*/
 
 impl Item {
     pub fn from_string(s: String) -> Item {
-        // [a,b,c] → Set
+        // Set
         if s.starts_with('[') && s.ends_with(']') {
             let inner = &s[1..s.len() - 1];
             let set = inner.split(',').map(|v| v.trim().to_string()).collect();
             return Item::Set(set);
         }
 
-        // k1:v1,k2:v2 → HashMap (all segments must contain ':')
+        // HashMap (all segments must contain ':')
         if s.contains(',') && s.split(',').all(|seg| seg.contains(':')) {
             let map = s
                 .split(',')
@@ -95,7 +100,7 @@ impl Item {
             return Item::HashMap(map);
         }
 
-        // a,b,c → List
+        // List
         if s.contains(',') {
             let list = s.split(',').map(|v| v.trim().to_string()).collect();
             return Item::List(list);
@@ -112,27 +117,28 @@ impl fmt::Display for Item {
             Item::List(items) => {
                 for (i, item) in items.iter().enumerate() {
                     if i > 0 {
-                        writeln!(f)?;
+                        write!(f, ",")?;
                     }
-                    write!(f, "{}) {item}", i + 1)?;
+                    write!(f, "{item}")?;
                 }
                 Ok(())
             }
             Item::Set(set) => {
+                write!(f, "[")?;
                 for (i, member) in set.iter().enumerate() {
                     if i > 0 {
-                        writeln!(f)?;
+                        write!(f, ",")?;
                     }
                     write!(f, "{member}")?;
                 }
-                Ok(())
+                write!(f, "]")
             }
             Item::HashMap(map) => {
                 for (i, (k, v)) in map.iter().enumerate() {
                     if i > 0 {
-                        writeln!(f)?;
+                        write!(f, ",")?;
                     }
-                    write!(f, "{k}: {v}")?;
+                    write!(f, "{k}:{v}")?;
                 }
                 Ok(())
             }

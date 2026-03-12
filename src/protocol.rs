@@ -3,7 +3,6 @@
 //! Custom communication protocol for mem-store-rs.
 //! Written on top of TCP.
 
-use postcard::{from_bytes, to_allocvec};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::TcpStream};
 
 use crate::{error::Error, store::Item};
@@ -63,55 +62,91 @@ impl Packet {
         }
     }
 
-    // fn serialize(&self) -> Vec<u8> {
-    //     match self.packet_type {
-    //         PacketType::RequestGet => self.serialize_key('+'),
-    //         PacketType::RequestSet => self.serialize_key_and_value('>'),
-    //         PacketType::RequestDelete => self.serialize_key('-'),
-    //         PacketType::ResponseOk => self.serialize_key_and_value('$'),
-    //         PacketType::ResponseError(error) => format!("&{}", error.to_string()),
-    //     }
-    // }
+    /*
+        PROTOCOL SPECIFICATION
 
-    fn serialize(&self, symbol: char) -> Vec<u8> {
-        let mut buf = vec![symbol as u8];
+        1. Message starts with 1 byte flag for type:
+            [ as \x91 => Request
+            ] as \x93 => Response
+
+        2. Then 1 byte flag for response/request type:
+            < as \x60 => Get request
+            > as \x62 => Set request
+            - as \x43 => Delete request
+
+            $ as \x36 => Ok response
+            & as \x38 => Error response
+
+        3. 2 1 byte flags to specify which body fields are included:
+            true/false => Key field
+            true/false  => Value field
+
+            Note: Not need for error responses.
+            Error responses do not send the key or value fields,
+            there is no ambiguity what the serialized field is.
+
+        4. Body fields:
+            Each body field is prepended with their size.
+            Example:
+            5hello
+
+            Body field sizes:
+            key => u16 (2 bytes)
+            value => u32 (8 bytes)
+            error => u16 (2 bytes)
+
+            Example GET "hello" key:
+            Request => [<5hello
+            Response => ]$5world
+    */
+
+    fn serialize(&self) -> Result<Vec<u8>, Error> {
+        let pkt_type_tags = self.packet_type.to_tag();
+        let mut buf = Vec::new();
+        buf.extend(pkt_type_tags);
+
+        // Error response
+        if let PacketType::ResponseError(error) = self.packet_type {
+            buf.extend(self.packet_type.to_tag());
+            let error = error.to_string();
+            assert!(error.len() <= usize::from(u16::MAX));
+            buf.extend(&(error.len() as u16).to_be_bytes());
+            buf.extend(error.into_bytes());
+            return Ok(buf);
+        }
+
+        let (key_include, value_include) = match (self.key.clone(), self.value.clone()) {
+            (None, None) => (false, false),
+            (None, Some(_)) => (false, true),
+            (Some(_), None) => (true, false),
+            (Some(_), Some(_)) => (true, true),
+        };
+        buf.push(key_include as u8);
+        buf.push(value_include as u8);
+
+        // Key field
         if let Some(key) = self.key.clone() {
             let key_bytes = key.as_bytes();
+            assert!(key_bytes.len() <= usize::from(u16::MAX));
             buf.extend(&(key_bytes.len() as u16).to_be_bytes());
             buf.extend(key_bytes)
-        } else {
-            buf.extend(&0u16.to_be_bytes());
         }
+
+        // Value field
         if let Some(value) = self.value.clone() {
-            let key_bytes = Item::as_bytes(&value);
-            buf.extend(&(key_bytes.len() as u16).to_be_bytes());
-            buf.extend(key_bytes)
-        } else {
-            buf.extend(&0u16.to_be_bytes());
+            let value_str = value.to_string();
+            let value_bytes = value_str.as_bytes();
+            // Make sure value length fits in a u32.
+            let len = u32::try_from(value_bytes.len()).map_err(|_| Error::ValueLengthTooLong)?;
+            assert!(len <= u32::MAX);
+            buf.extend(&(value_bytes.len() as u32).to_be_bytes());
+            buf.extend(value_bytes)
         }
-        buf
+        Ok(buf)
     }
 
-    pub fn deserialize(bytes: &[u8]) -> Packet {
-        let serial_data = String::from_utf8_lossy(bytes);
-        let packet_str = serial_data.as_ref().to_string();
-        let pkt_type = match packet_str.get(0..1) {
-            Some("+") => PacketType::RequestGet,
-            Some(">") => PacketType::RequestSet,
-            Some("-") => PacketType::RequestDelete,
-            Some("$") => PacketType::ResponseOk,
-            Some("&") => todo!(),
-            _ => todo!(),
-        };
-        // TODO: somehow split packet_str at the key and value
-        // maybe have a delimiter for:
-        // - Some key
-        // - No key
-        // - Some value
-        // - No value
-        //
-        // ^ Feels wrong. No way of knowing if value delimiter is part of key or not.
-        // HOW DO PEOPLE SERIALIZE/DESERIALIZE PACKETS!?
+    pub fn deserialize(bytes: &[u8]) -> Result<Packet, Error> {
+        todo!()
     }
 }
 
@@ -125,13 +160,13 @@ pub enum PacketType {
 }
 
 impl PacketType {
-    pub fn to_tag(&self) -> u8 {
+    pub fn to_tag(&self) -> [u8; 2] {
         match self {
-            PacketType::RequestGet => '+' as u8,
-            PacketType::RequestSet => '>' as u8,
-            PacketType::RequestDelete => '-' as u8,
-            PacketType::ResponseOk => '$' as u8,
-            PacketType::ResponseError(_) => '&' as u8,
+            PacketType::RequestGet => ['[' as u8, '+' as u8],
+            PacketType::RequestSet => ['[' as u8, '>' as u8],
+            PacketType::RequestDelete => ['[' as u8, '-' as u8],
+            PacketType::ResponseOk => [']' as u8, '$' as u8],
+            PacketType::ResponseError(_) => [']' as u8, '&' as u8],
         }
     }
 }
@@ -144,16 +179,14 @@ impl Default for PacketType {
 
 /// Send a Packet across a `&mut TcpStream`.
 pub async fn send_packet(stream: &mut TcpStream, packet: &Packet) -> Result<(), Error> {
-    let serial_pkt = packet.serialize();
-    let payload = serial_pkt.as_bytes();
-    // let payload = to_allocvec(packet).map_err(|_| Error::UnableToSerialize)?;
-    let len = (payload.len() as u32).to_be_bytes();
+    let serial_pkt = packet.serialize()?;
+    let len = (serial_pkt.len() as u32).to_be_bytes();
     stream
         .write_all(&len)
         .await
         .map_err(|_| Error::UnableToSend)?;
     stream
-        .write_all(&payload)
+        .write_all(&serial_pkt)
         .await
         .map_err(|_| Error::UnableToSend)?;
     Ok(())
@@ -173,5 +206,6 @@ pub async fn recv_packet(stream: &mut TcpStream) -> Result<Packet, Error> {
         .read_exact(&mut buf)
         .await
         .map_err(|_| Error::UnableToReceive)?;
-    from_bytes(&buf).map_err(|_| Error::UnableToDeserialize)
+
+    Packet::deserialize(&buf)
 }
