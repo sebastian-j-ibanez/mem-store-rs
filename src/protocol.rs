@@ -34,7 +34,7 @@ impl Packet {
         Self {
             key: None,
             value: None,
-            packet_type: PacketType::ResponseError(error),
+            packet_type: PacketType::ResponseError(String::from(error.to_string())),
         }
     }
 
@@ -65,11 +65,7 @@ impl Packet {
     /*
         PROTOCOL SPECIFICATION
 
-        1. Message starts with 1 byte flag for type:
-            [ as \x91 => Request
-            ] as \x93 => Response
-
-        2. Then 1 byte flag for response/request type:
+        1. Then 1 byte flag for response/request type:
             < as \x60 => Get request
             > as \x62 => Set request
             - as \x43 => Delete request
@@ -77,15 +73,16 @@ impl Packet {
             $ as \x36 => Ok response
             & as \x38 => Error response
 
-        3. 2 1 byte flags to specify which body fields are included:
+        2. 2 1 byte flags to specify which body fields are included:
             true/false => Key field
             true/false  => Value field
 
-            Note: Not need for error responses.
+            Note: Not needed for error responses.
             Error responses do not send the key or value fields,
-            there is no ambiguity what the serialized field is.
+            there is no ambiguity about what the body field is
+            (an error message prepended with it's u16 length).
 
-        4. Body fields:
+        3. Body fields:
             Each body field is prepended with their size.
             Example:
             5hello
@@ -101,13 +98,11 @@ impl Packet {
     */
 
     fn serialize(&self) -> Result<Vec<u8>, Error> {
-        let pkt_type_tags = self.packet_type.to_tag();
         let mut buf = Vec::new();
-        buf.extend(pkt_type_tags);
+        buf.push(self.packet_type.to_tag());
 
         // Error response
-        if let PacketType::ResponseError(error) = self.packet_type {
-            buf.extend(self.packet_type.to_tag());
+        if let PacketType::ResponseError(error) = self.packet_type.clone() {
             let error = error.to_string();
             assert!(error.len() <= usize::from(u16::MAX));
             buf.extend(&(error.len() as u16).to_be_bytes());
@@ -146,7 +141,134 @@ impl Packet {
     }
 
     pub fn deserialize(bytes: &[u8]) -> Result<Packet, Error> {
-        todo!()
+        let mut bytes_iter = bytes.iter();
+        let pkt_type = match bytes_iter.next() {
+            Some(0x60) => PacketType::RequestGet,
+            Some(0x62) => PacketType::RequestSet,
+            Some(0x43) => PacketType::RequestDelete,
+            Some(0x36) => PacketType::ResponseOk,
+            Some(0x38) => {
+                let mut len_bytes = Vec::new();
+                for _ in 0..2 {
+                    if let Some(byte) = bytes_iter.next() {
+                        len_bytes.push(*byte);
+                    } else {
+                        eprintln!("error: packet ended while reading error message length");
+                        return Err(Error::UnableToDeserialize);
+                    }
+                }
+
+                let len = u16::from_be_bytes(
+                    len_bytes[0..2]
+                        .try_into()
+                        .map_err(|_| Error::UnableToDeserialize)?,
+                );
+                let mut message_bytes: Vec<char> = Vec::new();
+                for _ in 0..len {
+                    if let Some(byte) = bytes_iter.next() {
+                        message_bytes.push(*byte as char);
+                    } else {
+                        eprintln!("error: packet ended while reading error message");
+                        return Err(Error::UnableToDeserialize);
+                    }
+                }
+
+                return Ok(Packet {
+                    key: None,
+                    value: None,
+                    packet_type: PacketType::ResponseError(message_bytes.iter().collect()),
+                });
+            }
+            _ => {
+                eprintln!("error: unable to read packet type: invalid packet type flag");
+                return Err(Error::UnableToDeserialize);
+            }
+        };
+
+        let include_key = match bytes_iter.next() {
+            Some(1) => true,
+            Some(0) => false,
+            _ => {
+                eprintln!("error: unable to read 'include_key' flag");
+                return Err(Error::UnableToDeserialize);
+            }
+        };
+
+        let include_value = match bytes_iter.next() {
+            Some(1) => true,
+            Some(0) => false,
+            _ => {
+                eprintln!("error: unable to read 'include_value' flag");
+                return Err(Error::UnableToDeserialize);
+            }
+        };
+
+        let mut pkt = Packet {
+            key: None,
+            value: None,
+            packet_type: pkt_type,
+        };
+
+        if include_key {
+            let mut len_bytes = Vec::new();
+            for _ in 0..2 {
+                if let Some(byte) = bytes_iter.next() {
+                    len_bytes.push(*byte);
+                } else {
+                    eprintln!("error: packet ended while reading key field length");
+                    return Err(Error::UnableToDeserialize);
+                }
+            }
+
+            let len = u16::from_be_bytes(
+                len_bytes[0..2]
+                    .try_into()
+                    .map_err(|_| Error::UnableToDeserialize)?,
+            );
+
+            let mut key_bytes: Vec<char> = Vec::new();
+            for _ in 0..len {
+                if let Some(byte) = bytes_iter.next() {
+                    key_bytes.push(*byte as char);
+                } else {
+                    eprintln!("error: packet ended while reading key field");
+                    return Err(Error::UnableToDeserialize);
+                }
+            }
+
+            pkt.key = Some(key_bytes.iter().collect());
+        }
+
+        if include_value {
+            let mut len_bytes = Vec::new();
+            for _ in 0..2 {
+                if let Some(byte) = bytes_iter.next() {
+                    len_bytes.push(*byte);
+                } else {
+                    eprintln!("error: packet ended while reading value field length");
+                    return Err(Error::UnableToDeserialize);
+                }
+            }
+
+            let len = u32::from_be_bytes(
+                len_bytes[0..4]
+                    .try_into()
+                    .map_err(|_| Error::UnableToDeserialize)?,
+            );
+
+            let mut value_bytes: Vec<char> = Vec::new();
+            for _ in 0..len {
+                if let Some(byte) = bytes_iter.next() {
+                    value_bytes.push(*byte as char);
+                } else {
+                    eprintln!("error: packet ended while reading value field");
+                    return Err(Error::UnableToDeserialize);
+                }
+            }
+            pkt.value = Some(Item::from_string(value_bytes.iter().collect()));
+        }
+
+        Ok(pkt)
     }
 }
 
@@ -156,17 +278,17 @@ pub enum PacketType {
     RequestSet,
     RequestDelete,
     ResponseOk,
-    ResponseError(Error),
+    ResponseError(String),
 }
 
 impl PacketType {
-    pub fn to_tag(&self) -> [u8; 2] {
+    pub fn to_tag(&self) -> u8 {
         match self {
-            PacketType::RequestGet => ['[' as u8, '+' as u8],
-            PacketType::RequestSet => ['[' as u8, '>' as u8],
-            PacketType::RequestDelete => ['[' as u8, '-' as u8],
-            PacketType::ResponseOk => [']' as u8, '$' as u8],
-            PacketType::ResponseError(_) => [']' as u8, '&' as u8],
+            PacketType::RequestGet => '+' as u8,
+            PacketType::RequestSet => '>' as u8,
+            PacketType::RequestDelete => '-' as u8,
+            PacketType::ResponseOk => '$' as u8,
+            PacketType::ResponseError(_) => '&' as u8,
         }
     }
 }

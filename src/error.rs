@@ -24,6 +24,7 @@ pub enum Error {
     MissingPacketFields,
     UnexpectedPacketType,
     ValueLengthTooLong,
+    InvalidPacketTypeFlag,
 }
 
 impl fmt::Display for Error {
@@ -46,6 +47,7 @@ impl fmt::Display for Error {
             Error::MissingPacketFields => "one or more packet fields are missing data",
             Error::UnexpectedPacketType => "unexpected packet type",
             Error::ValueLengthTooLong => "value exceeds max length of 4.2GB",
+            Error::InvalidPacketTypeFlag => "invalid packet type flag",
         };
 
         write!(f, "{message}")
