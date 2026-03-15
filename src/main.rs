@@ -23,12 +23,14 @@ async fn run_server() -> Result<(), Error> {
 }
 
 async fn run_client() -> Result<(), Error> {
-    let mut client = Client::init("127.0.0.1:3000").await.unwrap();
-    client.connect().await.unwrap();
+    let mut client = Client::init("127.0.0.1:3000").await?;
+    client.connect().await?;
     let key = String::from("my_list");
     let value = Item::from_string(String::from("a,b,c"));
-    client.set_value(key.clone(), value.clone()).await.unwrap();
-    match client.get_value(key).await.unwrap() {
+    client
+        .send_set_request(key.clone(), value.clone())
+        .await?;
+    match client.send_get_request(key).await? {
         Some(response_value) => {
             println!(
                 "expected: {}\ngot:      {}",

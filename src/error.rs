@@ -2,9 +2,7 @@
 
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 pub enum Error {
     // Store
     StoreSetError,
@@ -25,6 +23,13 @@ pub enum Error {
     UnableToDeserialize,
     MissingPacketFields,
     UnexpectedPacketType,
+    ValueLengthTooLong,
+    InvalidPacketTypeFlag,
+    InvalidPacketLengthFlag,
+    InvalidIncludeFlag,
+    InvalidKeyField,
+    InvalidValueField,
+    Custom(String),
 }
 
 impl fmt::Display for Error {
@@ -43,9 +48,16 @@ impl fmt::Display for Error {
             Error::InvalidStream => "invalid stream",
             Error::UnableToSerialize => "unable to serialize packet",
             Error::UnableToDeserialize => "unable to deserialize packet",
-            Error::InvalidPacketFields => "invalid packat fields",
+            Error::InvalidPacketFields => "invalid packet fields",
             Error::MissingPacketFields => "one or more packet fields are missing data",
             Error::UnexpectedPacketType => "unexpected packet type",
+            Error::ValueLengthTooLong => "value exceeds max length of 4.2GB",
+            Error::InvalidPacketTypeFlag => "invalid packet type flag",
+            Error::InvalidPacketLengthFlag => "invalid packet length flag",
+            Error::InvalidIncludeFlag => "invalid include flag",
+            Error::InvalidKeyField => "invalid key field",
+            Error::InvalidValueField => "invalid value field",
+            Error::Custom(msg) => msg,
         };
 
         write!(f, "{message}")
@@ -53,6 +65,10 @@ impl fmt::Display for Error {
 }
 
 impl Error {
+    pub fn from_string(message: impl Into<String>) -> Self {
+        Error::Custom(message.into())
+    }
+
     pub fn log(&self) {
         println!("error: {}", self.to_string())
     }

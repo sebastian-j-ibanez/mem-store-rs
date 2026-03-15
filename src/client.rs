@@ -20,7 +20,7 @@ impl Client {
     pub async fn init(raw_addr: &'static str) -> Result<Self, Error> {
         if let Ok(addr) = raw_addr.parse::<SocketAddr>() {
             return Ok(Self {
-                addr: addr,
+                addr,
                 stream: None,
             });
         }
@@ -39,33 +39,33 @@ impl Client {
         self.stream.as_mut().ok_or(Error::InvalidStream)
     }
 
-    pub async fn get_value(&mut self, key: String) -> Result<Option<Item>, Error> {
+    pub async fn send_get_request(&mut self, key: String) -> Result<Option<Item>, Error> {
         let request = Packet::get_request(key);
         send_packet(self.stream()?, &request).await?;
         let response = recv_packet(self.stream()?).await?;
         Ok(response.value)
     }
 
-    pub async fn set_value(&mut self, key: String, value: Item) -> Result<(), Error> {
+    pub async fn send_set_request(&mut self, key: String, value: Item) -> Result<(), Error> {
         let request = Packet::set_request(key, value);
         send_packet(self.stream()?, &request).await?;
         let response = recv_packet(self.stream()?).await?;
         match response.packet_type {
             PacketType::ResponseOk => Ok(()),
-            PacketType::ResponseError(e) => return Err(e),
-            _ => return Err(Error::UnexpectedPacketType),
+            PacketType::ResponseError(e) => Err(Error::from_string(e.to_string())),
+            _ => Err(Error::UnexpectedPacketType),
         }
     }
 
-    pub async fn delet_value(&mut self, key: String) -> Result<(), Error> {
+    pub async fn send_delete_request(&mut self, key: String) -> Result<(), Error> {
         let stream = self.stream()?;
         let request = Packet::delete_request(key);
         send_packet(stream, &request).await?;
         let response = recv_packet(stream).await?;
         match response.packet_type {
             PacketType::ResponseOk => Ok(()),
-            PacketType::ResponseError(e) => return Err(e),
-            _ => return Err(Error::UnexpectedPacketType),
+            PacketType::ResponseError(e) => Err(Error::from_string(e.to_string())),
+            _ => Err(Error::UnexpectedPacketType),
         }
     }
 }
