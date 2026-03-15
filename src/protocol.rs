@@ -63,15 +63,15 @@ impl Packet {
     }
 
     /*
-        PROTOCOL SPECIFICATION
+        MEM-STORE-RS PROTOCOL SPECIFICATION
 
         1. Then 1 byte flag for response/request type:
-            < as \x60 => Get request
-            > as \x62 => Set request
-            - as \x43 => Delete request
+            < as 60 => Get request
+            > as 62 => Set request
+            - as 43 => Delete request
 
-            $ as \x36 => Ok response
-            & as \x38 => Error response
+            $ as 36 => Ok response
+            & as 38 => Error response
 
         2. 2 1 byte flags to specify which body fields are included:
             true/false => Key field
@@ -93,8 +93,8 @@ impl Packet {
             error => u16 (2 bytes)
 
             Example GET "hello" key:
-            Request => [<5hello
-            Response => ]$5world
+            Request => <5hello
+            Response => $5world
     */
 
     fn serialize(&self) -> Result<Vec<u8>, Error> {
@@ -131,7 +131,7 @@ impl Packet {
         if let Some(value) = self.value.clone() {
             let value_str = value.to_string();
             let value_bytes = value_str.as_bytes();
-            // Make sure value length fits in a u32.
+            // Make sure value length fits in an u32.
             let len = u32::try_from(value_bytes.len()).map_err(|_| Error::ValueLengthTooLong)?;
             assert!(len <= u32::MAX);
             buf.extend(&(value_bytes.len() as u32).to_be_bytes());
@@ -143,11 +143,11 @@ impl Packet {
     pub fn deserialize(bytes: &[u8]) -> Result<Packet, Error> {
         let mut bytes_iter = bytes.iter();
         let pkt_type = match bytes_iter.next() {
-            Some(0x60) => PacketType::RequestGet,
-            Some(0x62) => PacketType::RequestSet,
-            Some(0x43) => PacketType::RequestDelete,
-            Some(0x36) => PacketType::ResponseOk,
-            Some(0x38) => {
+            Some(60) => PacketType::RequestGet,
+            Some(62) => PacketType::RequestSet,
+            Some(43) => PacketType::RequestDelete,
+            Some(36) => PacketType::ResponseOk,
+            Some(38) => {
                 let mut len_bytes = Vec::new();
                 for _ in 0..2 {
                     if let Some(byte) = bytes_iter.next() {
@@ -241,7 +241,7 @@ impl Packet {
 
         if include_value {
             let mut len_bytes = Vec::new();
-            for _ in 0..2 {
+            for _ in 0..4 {
                 if let Some(byte) = bytes_iter.next() {
                     len_bytes.push(*byte);
                 } else {
@@ -251,7 +251,7 @@ impl Packet {
             }
 
             let len = u32::from_be_bytes(
-                len_bytes[0..4]
+                len_bytes[0..]
                     .try_into()
                     .map_err(|_| Error::UnableToDeserialize)?,
             );
@@ -284,7 +284,7 @@ pub enum PacketType {
 impl PacketType {
     pub fn to_tag(&self) -> u8 {
         match self {
-            PacketType::RequestGet => '+' as u8,
+            PacketType::RequestGet => '<' as u8,
             PacketType::RequestSet => '>' as u8,
             PacketType::RequestDelete => '-' as u8,
             PacketType::ResponseOk => '$' as u8,
@@ -302,7 +302,7 @@ impl Default for PacketType {
 /// Send a Packet across a `&mut TcpStream`.
 pub async fn send_packet(stream: &mut TcpStream, packet: &Packet) -> Result<(), Error> {
     let serial_pkt = packet.serialize()?;
-    let len = (serial_pkt.len() as u32).to_be_bytes();
+    let len = (serial_pkt.len() as u64).to_be_bytes();
     stream
         .write_all(&len)
         .await
@@ -316,12 +316,12 @@ pub async fn send_packet(stream: &mut TcpStream, packet: &Packet) -> Result<(), 
 
 /// Receive a Packet from an `&mut TcpStream`.
 pub async fn recv_packet(stream: &mut TcpStream) -> Result<Packet, Error> {
-    let mut len_buf = [0u8; 4];
+    let mut len_buf = [0u8; 8];
     stream
         .read_exact(&mut len_buf)
         .await
         .map_err(|_| Error::UnableToReceive)?;
-    let len = u32::from_be_bytes(len_buf) as usize;
+    let len = u64::from_be_bytes(len_buf) as usize;
 
     let mut buf = vec![0u8; len];
     stream

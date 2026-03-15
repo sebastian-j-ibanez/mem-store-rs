@@ -20,7 +20,7 @@ impl Server {
     pub async fn init(raw_addr: &'static str) -> Result<Self, Error> {
         if let Ok(addr) = raw_addr.parse::<SocketAddr>() {
             return Ok(Self {
-                addr: addr,
+                addr,
                 stream: None,
                 store: Store::new(),
             });
@@ -59,8 +59,8 @@ impl Server {
         match request.packet_type {
             PacketType::RequestGet => self.handle_get(request).await?,
             PacketType::RequestSet => self.handle_set(request).await?,
-            PacketType::RequestDelete => todo!(),
-            _ => todo!(),
+            PacketType::RequestDelete => self.handle_delete(request).await?,
+            _ => return Err(Error::InvalidPacketTypeFlag),
         }
 
         Ok(())
@@ -100,6 +100,23 @@ impl Server {
         let response = match self.store.add(key, value) {
             Ok(_) => Packet::ok_response(),
             Err(_) => Packet::error_response(Error::StoreSetError),
+        };
+        send_packet(self.stream()?, &response).await
+    }
+
+    async fn handle_delete(&mut self, request: Packet) -> Result<(), Error> {
+        let key = match request.key {
+            Some(key) => key,
+            _ => {
+                let response = Packet::error_response(Error::InvalidPacketFields);
+                send_packet(self.stream()?, &response).await?;
+                return Err(Error::InvalidPacketFields);
+            }
+        };
+
+        let response = match self.store.delete(key) {
+           Ok(_) => Packet::ok_response(),
+            Err(_) => Packet::error_response(Error::StoreDeleteError),
         };
         send_packet(self.stream()?, &response).await
     }
