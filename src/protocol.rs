@@ -21,6 +21,9 @@ pub struct Packet {
     pub packet_type: PacketType,
 }
 
+const U16_BYTE_COUNT: usize = 2;
+const U32_BYTE_COUNT: usize = 4;
+
 impl Packet {
     pub fn ok_response() -> Self {
         Self {
@@ -149,7 +152,7 @@ impl Packet {
             Some(36) => PacketType::ResponseOk,
             Some(38) => {
                 let mut len_bytes = Vec::new();
-                for _ in 0..2 {
+                for _ in 0..U16_BYTE_COUNT {
                     if let Some(byte) = bytes_iter.next() {
                         len_bytes.push(*byte);
                     } else {
@@ -159,7 +162,7 @@ impl Packet {
                 }
 
                 let len = u16::from_be_bytes(
-                    len_bytes[0..2]
+                    len_bytes[0..U16_BYTE_COUNT]
                         .try_into()
                         .map_err(|_| Error::UnableToDeserialize)?,
                 );
@@ -211,7 +214,7 @@ impl Packet {
 
         if include_key {
             let mut len_bytes = Vec::new();
-            for _ in 0..2 {
+            for _ in 0..U16_BYTE_COUNT {
                 if let Some(byte) = bytes_iter.next() {
                     len_bytes.push(*byte);
                 } else {
@@ -221,7 +224,7 @@ impl Packet {
             }
 
             let len = u16::from_be_bytes(
-                len_bytes[0..2]
+                len_bytes[0..U16_BYTE_COUNT]
                     .try_into()
                     .map_err(|_| Error::UnableToDeserialize)?,
             );
@@ -241,7 +244,7 @@ impl Packet {
 
         if include_value {
             let mut len_bytes = Vec::new();
-            for _ in 0..4 {
+            for _ in 0..U32_BYTE_COUNT {
                 if let Some(byte) = bytes_iter.next() {
                     len_bytes.push(*byte);
                 } else {
@@ -251,7 +254,7 @@ impl Packet {
             }
 
             let len = u32::from_be_bytes(
-                len_bytes[0..]
+                len_bytes[0..U32_BYTE_COUNT]
                     .try_into()
                     .map_err(|_| Error::UnableToDeserialize)?,
             );
